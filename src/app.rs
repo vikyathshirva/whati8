@@ -1,3 +1,5 @@
+use std::thread::park_timeout;
+
 use leptos::{ev::SubmitEvent, html::Input, *};
 use leptos_meta::*;
 use leptos_router::*;
@@ -34,8 +36,7 @@ impl Participants {
     }
 
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    pub fn is_empty(&self) -> bool { self.0.is_empty()
     }
 
     pub fn add(&mut self, participant: Participant) {
@@ -87,6 +88,22 @@ pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
 
+    let (participants, set_participants) = create_signal(Participants::new());
+    provide_context(set_participants);
+    provide_context(participants);
+
+
+    create_effect(move|_| {
+        if let Ok(Some(storage)) = window().local_storage() {
+            let json = serde_json::to_string(&participants)
+                .expect("Couldn't serialize participants");
+            if storage.set_item(PARTICIPANTS_STORAGE_KEY, &json).is_err() {
+                log::error!("Error while trying to set item in local storage")
+            }
+        }
+    });
+
+
 
 
 
@@ -117,7 +134,7 @@ fn Homepage() -> impl IntoView {
 
 
 
-
+    let participants = use_context::<ReadSignal<Participants>>().unwrap();
 
     view! {
         <body class="bg-gray-100">
@@ -134,6 +151,13 @@ fn Homepage() -> impl IntoView {
                     <label for="e-amount">Enter total amount</label>
                     <input type="double" id="e-amount" placeholder="Enter the total amount" class="mt-2 p-2 border rounded-md w-full" />
                     <ParticipantAdder/>
+
+                    {participants.get().0.to_vec().clone().iter()
+                            .map(|n| view!{
+                                <div >{n.name.get().to_string()}</div>
+                            })
+                            .collect_view()}
+
                 </section>
             </main>
         </body>
@@ -144,22 +168,9 @@ fn Homepage() -> impl IntoView {
 
 #[component]
 fn ParticipantAdder() -> impl IntoView {
-
-    let (participants, set_participants) = create_signal(Participants::new());
-
-
-    create_effect(move|_| {
-        if let Ok(Some(storage)) = window().local_storage() {
-            let json = serde_json::to_string(&participants)
-                .expect("Couldn't serialize participants");
-            if storage.set_item(PARTICIPANTS_STORAGE_KEY, &json).is_err() {
-                log::error!("Error while trying to set item in local storage")
-            }
-        }
-    });
-
+    let set_participants = use_context::<WriteSignal<Participants>>().unwrap();
     let participant_input_ref = create_node_ref::<Input>();
-    let add_participant = move || {
+    let add_participant = move |_| {
         let input = participant_input_ref.get().unwrap();
         let name = input.value();
         let name = name.trim();
@@ -173,25 +184,9 @@ fn ParticipantAdder() -> impl IntoView {
         }
     };
 
-    let all_participants = move|| {
-        participants.with(|participant| participant.0.to_vec())
-    };
-
-
-    let participants = vec!["Participant 1", "Participant 2", "Participant 3"];
     view! {
-    <label for="participants">add participants </label>
-    <input type="text" name="participants"></input>
-    <button id="addButton">Add</button>
-    {all_participants().iter()
-            .map(|n| view!{
-                <div >{n.name.get().to_string()}</div>
-            })
-            .collect_view()}
-
-
-    <select name="participants" id="participants-selector" class="mt-2 p-2 border rounded-md w-full" >
-    </select>
+    <input name="participants" type="text" node_ref=participant_input_ref name="participants"></input>
+    <button id="addButton" on:click=add_participant>Add</button>
 }
 
 }
