@@ -1,11 +1,9 @@
-use std::thread::park_timeout;
 
 use leptos::{ev::SubmitEvent, html::Input, *};
 use leptos_meta::*;
 use leptos_router::*;
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
-use web_sys::console::log;
 
 
 
@@ -31,7 +29,6 @@ impl Participants {
                     )
                 })
             .unwrap_or_default();
-
         Self(starting_participants)
     }
 
@@ -80,9 +77,6 @@ impl Participant {
 }
 
 
-
-
-
 #[component]
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
@@ -102,10 +96,6 @@ pub fn App() -> impl IntoView {
             }
         }
     });
-
-
-
-
 
     view! {
         // injects a stylesheet into the document <head>
