@@ -1,4 +1,3 @@
-
 use leptos::{ev::SubmitEvent, html::Input, *};
 use leptos_meta::*;
 use leptos_router::*;
@@ -49,6 +48,7 @@ impl Participants {
         self.0.retain(|participant| {
             let retain = f(participant);
             if !retain {
+
                 participant.name.dispose();
             }
             retain
