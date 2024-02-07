@@ -4,9 +4,6 @@ use leptos_router::*;
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
-
-
-
 const LINE_ITEM_STORAGE_KEY: &str = "line-item-storage";
 const PARTICIPANTS_STORAGE_KEY: &str  = "participants-storage";
 const EVENT_STORAGE_KEY: &str  = "event-item-storage";
@@ -54,6 +51,12 @@ impl Participants {
             retain
         })
 
+    }
+}
+
+impl Default for Participants {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -121,8 +124,6 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn Homepage() -> impl IntoView {
-
-
 
     let participants = use_context::<ReadSignal<Participants>>().unwrap();
 
