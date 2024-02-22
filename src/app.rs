@@ -1,83 +1,144 @@
+use std::{collections::HashMap, string};
 use leptos::{ev::SubmitEvent, html::Input, *};
 use leptos_meta::*;
 use leptos_router::*;
-use uuid::Uuid;
+use log::{info, debug};
 use serde::{Deserialize, Serialize};
-
-const LINE_ITEM_STORAGE_KEY: &str = "line-item-storage";
-const PARTICIPANTS_STORAGE_KEY: &str  = "participants-storage";
-const EVENT_STORAGE_KEY: &str  = "event-item-storage";
+use uuid::Uuid;
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Participants(pub Vec<Participant>);
-
-impl Participants {
-    pub fn new() -> Self {
-        let starting_participants =
-            window()
-                .local_storage()
-                .ok()
-                .flatten()
-                .and_then(|storage| {
-                    storage.get_item(PARTICIPANTS_STORAGE_KEY).ok().flatten().and_then(
-                        |value| serde_json::from_str::<Vec<Participant>>(&value).ok(),
-                    )
-                })
-            .unwrap_or_default();
-        Self(starting_participants)
-    }
-
-
-    pub fn is_empty(&self) -> bool { self.0.is_empty()
-    }
-
-    pub fn add(&mut self, participant: Participant) {
-        self.0.push(participant);
-    }
-
-    pub fn remove(&mut self, id: Uuid) {
-        self.retain(|participant| participant.id != id)
-    }
-
-
-    fn retain(&mut self, mut f: impl FnMut(&Participant) -> bool) {
-        self.0.retain(|participant| {
-            let retain = f(participant);
-            if !retain {
-
-                participant.name.dispose();
-            }
-            retain
-        })
-
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct LItem {
+    id: Uuid,
+    item_name: String,
+    price: Decimal,
+    participants: Vec<Participant>,
 }
 
-impl Default for Participants {
-    fn default() -> Self {
-        Self::new()
+
+impl LItem {
+    fn new(item_name: String, price: Decimal) -> Self {
+        LItem {
+            id: Uuid::new_v4(),
+            item_name,
+            price,
+            participants: Vec::new()
+        }
+    }
+
+    fn add_participant(&mut self, participant: Participant)  {
+        self.participants.push(participant);
+    }
+
+    fn remove_participant(&mut self, participant_id: Uuid) {
+        self.participants.retain(|x| x.id != participant_id)
+    }
+
+    fn add_bulk_participants(&mut self, participants: Vec<Participant>) {
+        self.participants = participants;
     }
 }
 
 
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Participant {
-    pub id: Uuid,
-    pub name: RwSignal<String>,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Participant {
+    id: Uuid,
+    name: String,
+    payer: bool,
+    settle_status: bool
 }
-
 
 impl Participant {
-    pub fn new(id: Uuid, name: String) -> Self {
-        let name = create_rw_signal(name);
-        Self {
-            id,
-            name
+    fn new(name: String) -> Self {
+        Participant {
+           id: Uuid::new_v4(),
+           name,
+           payer: false,
+           settle_status: false
+        }
+    }
+
+    fn mark_as_payer(&mut self) {
+        self.payer = true;
+    }
+
+    fn mark_as_paid(&mut self) {
+        if self.settle_status == false {
+            self.settle_status = true
+        } else {
+            // TODO: throw an error here, until then log an error
+            //
+            debug!("user has already paid!")
+        }
+    }
+
+
+    fn mark_as_unpaid(&mut self) {
+        if self.settle_status == true {
+            self.settle_status = false
+        } else {
+            // TODO: throw an error here, until then log an error
+            //
+            debug!("user has already not-paid!")
         }
     }
 }
+
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct SplitItem {
+    id: Uuid,
+    event_name: String,
+    total_price: Decimal,
+    total_tax: Decimal,
+    participants: Vec<Participant>,
+    line_items: Vec<LItem>,
+    final_split: HashMap<Uuid, Decimal>,
+    settle_status: bool
+}
+
+
+impl SplitItem {
+    fn new (event_name: String, total_price: Decimal, total_tax: Decimal, participants: Vec<Participant>, line_items: Vec<LItem>) -> Self {
+        SplitItem {
+           id: Uuid::new_v4(),
+           event_name,
+           total_price,
+           total_tax,
+           participants,
+           line_items,
+           final_split: HashMap::new(),
+           settle_status: false
+        }
+    }
+
+    fn calculate_split(&mut self) {
+        let mut current_split : HashMap<Uuid, Decimal> = HashMap::new();
+        for part in self.participants.iter() {
+            let current_part_split = self.line_items.iter().fold(Decimal::new(0,10), | mut acc, x|{
+                if x.participants.contains(&part) {
+                     acc += x.price / Decimal::from(x.participants.len());
+                     acc
+                } else {
+                    acc
+            }
+        });
+        self.final_split.insert(part.id, current_part_split);
+     }
+    }
+
+    fn get_split_amount_by_id(&self, id: Uuid) -> Option<Decimal> {
+       self.final_split.get(&id).cloned()
+    }
+
+
+
+}
+
+
 
 
 #[component]
@@ -85,30 +146,12 @@ pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
 
-    let (participants, set_participants) = create_signal(Participants::new());
-    provide_context(set_participants);
-    provide_context(participants);
-
-
-    create_effect(move|_| {
-        if let Ok(Some(storage)) = window().local_storage() {
-            let json = serde_json::to_string(&participants)
-                .expect("Couldn't serialize participants");
-            if storage.set_item(PARTICIPANTS_STORAGE_KEY, &json).is_err() {
-                log::error!("Error while trying to set item in local storage")
-            }
-        }
-    });
-
     view! {
         // injects a stylesheet into the document <head>
         // id=leptos means cargo-leptos will hot-reload this stylesheet
         <Stylesheet id="leptos" href="/pkg/leptos_start.css"/>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.css"  rel="stylesheet" />
-
         // sets the document title
         <Title text="Whati8"/>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
 
         // content for this welcome page
         <Router>
@@ -122,11 +165,10 @@ pub fn App() -> impl IntoView {
     }
 }
 
+
+
 #[component]
 fn Homepage() -> impl IntoView {
-
-    let participants = use_context::<ReadSignal<Participants>>().unwrap();
-
     view! {
         <body class="bg-gray-100">
             <main class="container mx-auto p-4">
@@ -141,49 +183,11 @@ fn Homepage() -> impl IntoView {
                     <input type="double" id="e-tax" placeholder="Enter the tax amount" class="mt-2 p-2 border rounded-md w-full" />
                     <label for="e-amount">Enter total amount</label>
                     <input type="double" id="e-amount" placeholder="Enter the total amount" class="mt-2 p-2 border rounded-md w-full" />
-                    <ParticipantAdder/>
-
-                    {participants.get().0.to_vec().clone().iter()
-                            .map(|n| view!{
-                                <div >{n.name.get().to_string()}</div>
-                            })
-                            .collect_view()}
-
                 </section>
             </main>
         </body>
     }
 }
-
-
-
-#[component]
-fn ParticipantAdder() -> impl IntoView {
-    let set_participants = use_context::<WriteSignal<Participants>>().unwrap();
-    let participant_input_ref = create_node_ref::<Input>();
-    let add_participant = move |_| {
-        let input = participant_input_ref.get().unwrap();
-        let name = input.value();
-        let name = name.trim();
-        if !name.is_empty() {
-            let new = Participant::new(
-                Uuid::new_v4(),
-                name.to_string()
-            );
-            set_participants.update(|p| p.add(new));
-            input.set_value("");
-        }
-    };
-
-    view! {
-    <input name="participants" type="text" node_ref=participant_input_ref name="participants"></input>
-    <button id="addButton" on:click=add_participant>Add</button>
-}
-
-}
-
-
-
 
 
 /// 404 - Not Found
