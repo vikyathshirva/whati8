@@ -7,43 +7,95 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 
+const STORAGE_KEY_LITEM : &str = "litems-key";
+const STORAGE_KEY_PARTICIPANTS : &str = "participants-key";
+
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct LItem {
+pub struct LItems(pub Vec<LItem>);
+
+
+
+impl LItems {
+    pub fn new() -> Self {
+        let starting_litems =
+            window()
+            .local_storage()
+            .ok()
+            .flatten()
+            .and_then(|storage| {
+                storage.get_item(STORAGE_KEY_LITEM).ok().flatten().and_then(
+                    |value| serde_json::from_str::<Vec<LItem>>(&value).ok()
+                )
+            })
+        .unwrap_or_default();
+        Self(starting_litems)
+    }
+}
+
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LItem {
     id: Uuid,
-    item_name: String,
-    price: Decimal,
-    participants: Vec<Participant>,
+    item_name: RwSignal<String>,
+    price: RwSignal<Decimal>,
+    participants: RwSignal<Vec<Participant>>,
 }
 
 
 impl LItem {
     fn new(item_name: String, price: Decimal) -> Self {
+
+        let item_name = create_rw_signal(item_name);
+        let price = create_rw_signal(price);
+        let participants = create_rw_signal(Vec::new());
+
         LItem {
             id: Uuid::new_v4(),
             item_name,
             price,
-            participants: Vec::new()
+            participants
         }
     }
 
+
+    fn get_split_by_participants(&self) -> Decimal {
+        self.price.get() / Decimal::from(self.participants.get().len())
+    }
+
     fn add_participant(&mut self, participant: Participant)  {
-        self.participants.push(participant);
+        self.participants.update(|p| p.push(participant))
     }
 
     fn remove_participant(&mut self, participant_id: Uuid) {
-        self.participants.retain(|x| x.id != participant_id)
+        self.participants.update(|p| p.retain(|x| x.id != participant_id))
     }
+}
 
-    fn add_bulk_participants(&mut self, participants: Vec<Participant>) {
-        self.participants = participants;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Participants(pub Vec<Participant>);
+
+
+impl Participants {
+    pub fn new() -> Self {
+        let starting_participatns =
+            window()
+                .local_storage()
+                .ok()
+                .flatten()
+                .and_then(|storage| {
+                    storage.get_item(STORAGE_KEY_PARTICIPANTS).ok().flatten().and_then(
+                        |value| serde_json::from_str::<Vec<Participant>>(&value).ok(),
+                    )
+                })
+                .unwrap_or_default();
+        Self(starting_participatns)
     }
 }
 
 
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct Participant {
+pub struct Participant {
     id: Uuid,
     name: String,
     payer: bool,
@@ -89,7 +141,7 @@ impl Participant {
 
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct SplitItem {
+pub struct SplitItem {
     id: Uuid,
     event_name: String,
     total_price: Decimal,
@@ -116,11 +168,10 @@ impl SplitItem {
     }
 
     fn calculate_split(&mut self) {
-        let mut current_split : HashMap<Uuid, Decimal> = HashMap::new();
         for part in self.participants.iter() {
             let current_part_split = self.line_items.iter().fold(Decimal::new(0,10), | mut acc, x|{
-                if x.participants.contains(&part) {
-                     acc += x.price / Decimal::from(x.participants.len());
+                if x.participants.get().iter().any(|p| p.id == part.id) {
+                     acc += x.get_split_by_participants();
                      acc
                 } else {
                     acc
