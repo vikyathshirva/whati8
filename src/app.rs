@@ -532,20 +532,6 @@ fn Homepage() -> impl IntoView {
                                                         }
                                                           </For>
                                                      </select>
-
-//                                                        <For each=litem.participants key=|part| part.id let:part>
-//                                                            <div class="flex items-center mb-2">
-//                                                                <input
-//                                                                    type="text" value=part.name
-//                                                                    class="mr-2 border rounded-md p-2" />
-//                                                                <button
-//                                                                    on:click=move |_| remove_participant_from_item(part.id.to_string(), litem.id.to_string())
-//                                                                    class="bg-red-500 text-white p-2 rounded-md"
-//                                                                >
-//                                                                    Remove
-//                                                                </button>
-//                                                            </div>
-//                                                        </For>
                                                     </div>
                                                       }
                                                     } else {
