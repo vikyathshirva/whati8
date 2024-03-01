@@ -126,6 +126,9 @@ impl Participants {
 }
 
 
+#[derive(Clone, Debug, PartialEq, Eq, SignalValue)]
+pub struct PayerSignal(RwSignal<bool>);
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participant {
     id: Uuid,
@@ -147,10 +150,6 @@ impl Participant {
         }
     }
 
-    fn is_payer(&self) ->bool {
-        self.payer.get()
-    }
-
     fn update_name(&mut self, new_name: String) {
         self.name.update(|name| *name = new_name.clone());
     }
@@ -167,6 +166,10 @@ impl Participant {
             //
             debug!("user has already paid!")
         }
+    }
+
+    pub fn payer_signal(&self) -> PayerSignal {
+        PayerSignal(self.payer.clone())
     }
 
 
@@ -269,8 +272,8 @@ fn Homepage() -> impl IntoView {
         .iter_mut()
         .filter(|p| p.id.to_string() != id && p.payer.get() == true)
         .for_each(|p| p.mark_as_payer());
-        set_participants.update(|participants|{});
     };
+
 
     let part_name_ref = create_node_ref::<Input>();
     let part_payer_ref_yes = create_node_ref::<Input>();
@@ -285,9 +288,7 @@ fn Homepage() -> impl IntoView {
                 new.mark_as_payer();
             }
             set_participants.update(|p| p.add(new.clone()));
-            if is_payer {
-               mark_only_one_payer(new.id.to_string().clone());
-            }
+            mark_only_one_payer(new.id.to_string().clone());
             name_input.set_value("");
         }
     };
@@ -433,7 +434,7 @@ fn Homepage() -> impl IntoView {
                                                                  class="mr-2 border rounded-md p-2" />
                                                          <label class="mr-2">Payer</label>
                                                          <input type="checkbox" on:click = move |_| edit_participant_payer(part.id.to_string())
-                                                         name="is-payer" checked= part.is_payer() class="mr-2" />
+                                                         name="is-payer" checked=move || part.payer_signal().get() == true class="mr-2" />
                                                          <button on:click=move |_| remove_participant(part.id.to_string())
                                                          class="bg-red-500 text-white p-2 rounded-md">Remove</button>
                                                  </div>
