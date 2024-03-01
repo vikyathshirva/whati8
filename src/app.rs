@@ -21,21 +21,6 @@ pub struct LItems(pub Vec<LItem>);
 
 impl LItems {
     pub fn new() -> Self {
-//        let starting_litems = if cfg!(target_arch = "wasm32") {
-//            window()
-//            .local_storage()
-//            .ok()
-//            .flatten()
-//            .and_then(|storage| {
-//                storage.get_item(STORAGE_KEY_LITEM).ok().flatten().and_then(
-//                    |value| serde_json::from_str::<Vec<LItem>>(&value).ok()
-//                )
-//            })
-//        .unwrap_or_default()
-//        } else {
-//            Vec::new()
-//        };
-//
         Self(Vec::new())
     }
 
@@ -43,6 +28,12 @@ impl LItems {
     pub fn add(&mut self, litem: LItem) {
         self.0.push(litem);
     }
+
+
+    pub fn remove(&mut self, id: String) {
+        self.0.retain(|p| p.id.to_string() != id);
+    }
+
 }
 
 
@@ -81,8 +72,8 @@ impl LItem {
         self.participants.update(|p| p.push(participant))
     }
 
-    fn remove_participant(&mut self, participant_id: Uuid) {
-        self.participants.update(|p| p.retain(|x| x.id != participant_id))
+    fn remove_participant(&mut self, participant_id: String) {
+        self.participants.update(|p| p.retain(|x| x.id.to_string() != participant_id))
     }
 }
 
@@ -94,20 +85,6 @@ pub struct Participants(pub Vec<Participant>);
 
 impl Participants {
     pub fn new() -> Self {
-//        let starting_participatns = if cfg!(target_arch = "wasm32") {
-//            window()
-//                .local_storage()
-//                .ok()
-//                .flatten()
-//                .and_then(|storage| {
-//                    storage.get_item(STORAGE_KEY_PARTICIPANTS).ok().flatten().and_then(
-//                        |value| serde_json::from_str::<Vec<Participant>>(&value).ok(),
-//                    )
-//                })
-//                .unwrap_or_default()
-//        } else {
-//            Vec::new()
-//        };
         Self(Vec::new())
     }
 
@@ -304,12 +281,34 @@ fn Homepage() -> impl IntoView {
 
 
 
-    let (litem, set_litem) = create_signal(LItems::new());
+    let (litems, set_litems) = create_signal(LItems::new());
+
+
+    let remove_line_item = move |id: String| {
+        if !id.is_empty() {
+            set_litems.update(|litems| {
+                litems.remove(id.clone());
+            })
+        }
+    };
+
+
+
+    let remove_participant_from_item = move |part_id: String, litem_id: String| {
+        if !part_id.is_empty() && !litem_id.is_empty() {
+            let mut litem = litems.get().0.iter().find(|l| l.id.to_string() == litem_id).unwrap().clone();
+            litem.remove_participant(part_id);
+            if litem.participants.get().len() == 0 {
+                remove_line_item(litem_id);
+            }
+        }
+    };
 
     let litem_name_ref = create_node_ref::<Input>();
     let litem_price_ref = create_node_ref::<Input>();
     let litem_parts_ref = create_node_ref::<Select>();
     let add_line_item = move || {
+
         let litem_name_input = litem_name_ref.get().unwrap();
         let litem_price_input = litem_price_ref.get().unwrap();
         let litem_parts_input = litem_parts_ref.get().unwrap();
@@ -328,7 +327,7 @@ fn Homepage() -> impl IntoView {
 
         if !name.is_empty() && !price.to_string().is_empty() {
             let mut new = LItem::new(name.clone(), price);
-            set_litem.update(|l| l.add(new.clone()));
+            set_litems.update(|l| l.add(new.clone()));
             let participants_list: Vec<String> = participants.get().0.iter().map(|p| p.id.to_string()).collect();
             let selected_participants: Vec<Participant> = participants_list
             .iter()
@@ -338,6 +337,7 @@ fn Homepage() -> impl IntoView {
 
             for participant in selected_participants {
                 new.add_participant(participant.clone());
+                parts_selected.clear();
             }
             litem_name_input.set_value("");
             litem_price_input.set_value("");
@@ -353,6 +353,13 @@ fn Homepage() -> impl IntoView {
     let participants_exists = move || all_participants().len() > 0;
 
 
+    let all_litems = move || {
+        litems.get().0
+    };
+
+    let litems_exists = move || all_litems().len() > 0;
+
+
     create_effect(move |_| {
         if let Ok(Some(storage)) = window().local_storage() {
             let json = serde_json::to_string(&participants).expect("Couldn't serialize json");
@@ -365,7 +372,7 @@ fn Homepage() -> impl IntoView {
 
     create_effect(move |_| {
         if let Ok(Some(storage)) = window().local_storage() {
-            let json = serde_json::to_string(&litem).expect("Couldn't serialize json");
+            let json = serde_json::to_string(&litems).expect("Couldn't serialize json");
             if storage.set_item(STORAGE_KEY_LITEM, &json).is_err() {
                 log::error!("Error while trying to set item in line items");
             }
@@ -397,6 +404,14 @@ fn Homepage() -> impl IntoView {
         mark_only_one_payer(id.clone());
     };
 
+
+    let check_if_litem_participant = move |part_id: String, litem_id: String| {
+        if let Some(litem) = litems.get().0.iter().find(|l| l.id.to_string() == litem_id) {
+            litem.participants.get().iter().any(|p| p.id.to_string() == part_id)
+        } else {
+            false
+        }
+    };
 
 
 
@@ -469,6 +484,102 @@ fn Homepage() -> impl IntoView {
                                 <button type="submit" id="add-participant-btn" class="mt-2 p-2 border rounded-md w-full bg-blue-500 text-white">Add Participant</button>
                                 </div>
                                 </form>
+
+
+                    </div>
+
+                    <div id="add-participant-section"  class="mt-4">
+                                <div >
+                                    <label for="participant-dropdown">Items</label>
+                                    {move || if litems_exists(){
+                                        view!{
+                                            <>
+                                                <For
+                                                    each=all_litems
+                                                    key=|litem| litem.id
+                                                    let: litem
+                                                >
+                                                <div class="border-dotted border-2 border-blue-500 mt-4 p-4 rounded-md">
+
+                                                <div class="w-1/2 pr-2 ">
+
+                                                <div class="mb-2">
+                                                    <label for="item-name">Item Name</label>
+                                                    <input type="text" id="item-name" value=litem.item_name placeholder="Enter item name" class="mr-2 border rounded-md p-2" />
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label for="item-price">Item Price</label>
+                                                    <input type="number" id="item-price" value=litem.price.get().to_string()
+                                                    placeholder="Enter item price" class="mr-2 border rounded-md p-2" />
+
+                                                </div>
+                                                </div>
+                                                {move || if participants_exists() {
+                                                view! {
+                                                    <div>
+                                                        <label for="participant-dropdown">Participants</label>
+                                                     <select id="participants-dropdown"  multiple class="mt-2 p-2 border rounded-md w-full">
+                                                          <For each=all_participants key=|part| part.id let:part>
+                                                          {move || if check_if_litem_participant(part.id.to_string(), litem.id.to_string()) {
+                                                                view! {
+                                                                    <option value=part.clone().id.to_string() selected >{part.clone().name}</option>
+                                                                }
+                                                                        } else {
+                                                                view! {
+                                                                    <option value=part.clone().id.to_string() >{part.clone().name}</option>
+                                                                }
+                                                          }
+                                                        }
+                                                          </For>
+                                                     </select>
+
+//                                                        <For each=litem.participants key=|part| part.id let:part>
+//                                                            <div class="flex items-center mb-2">
+//                                                                <input
+//                                                                    type="text" value=part.name
+//                                                                    class="mr-2 border rounded-md p-2" />
+//                                                                <button
+//                                                                    on:click=move |_| remove_participant_from_item(part.id.to_string(), litem.id.to_string())
+//                                                                    class="bg-red-500 text-white p-2 rounded-md"
+//                                                                >
+//                                                                    Remove
+//                                                                </button>
+//                                                            </div>
+//                                                        </For>
+                                                    </div>
+                                                      }
+                                                    } else {
+                                                        view! {
+                                                            <div class="flex items-center mb-2">
+                                                                <h3>No participants yet!</h3>
+                                                            </div>
+                                                            }
+                                                        }
+                                                      }
+                                                <div >
+                                                    <label for="rem-item-btn" class="sr-only">Remove Item</label>
+                                                    <button on:click=move|_|remove_line_item(litem.id.to_string()) id="rem-item-btn" class="mt-2 p-2 border rounded-md w-full bg-red-500 text-white">
+                                                        Remove Item
+                                                    </button>
+                                                </div>
+                                                </div>
+                                                </For>
+                                            </>
+                                        }
+                                        }else {
+                                            view! {
+                                                <>
+                                                    <h3>No Items yet!</h3>
+                                                </>
+                                            }
+                                          }
+                                        }
+
+                                </div>
+                    </div>
+
+
+                    <div id="add-participant-section" class=" mt-4">
                                 <form on:submit=on_submit_item>
                                  <label for="item-name" class="mt-2">Item Name</label>
                                  <input type="text" node_ref=litem_name_ref id="item-name" placeholder="Enter item name" class="mt-2 p-2 border rounded-md w-full"/>
@@ -477,20 +588,18 @@ fn Homepage() -> impl IntoView {
                                  <input type="number" node_ref=litem_price_ref id="item-price" placeholder="Enter item price" class="mt-2 p-2 border rounded-md w-full" step="0.01"/>
 
                                  <label for="participants-dropdown" class="mt-2">Select Participants</label>
+
                                  <select id="participants-dropdown" node_ref=litem_parts_ref multiple class="mt-2 p-2 border rounded-md w-full">
                                      <For each=all_participants key=|part| part.id let:part>
                                          <option value=part.clone().id.to_string()>{part.clone().name}</option>
                                      </For>
                                  </select>
-
                                  <div class="w-1/2 pl-2 mt-2">
                                      <button type="submit" id="add-item-btn" class="p-2 border rounded-md w-full bg-blue-500 text-white">Add Item</button>
                                  </div>
                                  </form>
-
-
-
                     </div>
+
                 </section>
             </main>
         </body>
