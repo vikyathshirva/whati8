@@ -1,34 +1,43 @@
-<picture>
-    <source srcset="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_Solid_White.svg" media="(prefers-color-scheme: dark)">
-    <img src="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_RGB.svg" alt="Leptos Logo">
-</picture>
+# Whati8 - Bill Splitter App
 
-# Leptos Starter Template
+Whati8 is a bill splitter app written in Rust and Leptos, designed to run as a WebAssembly (Wasm) binary on the client-side. With Whati8, users can easily split bills and expenses among friends, making the process of managing shared expenses simple and efficient.
 
-This is a template for use with the [Leptos](https://github.com/leptos-rs/leptos) web framework and the [cargo-leptos](https://github.com/akesson/cargo-leptos) tool.
+## Features
 
-## Creating your template repo
+- **User-Friendly Interface**: Intuitive and easy-to-use interface for seamless bill splitting.
+- **Real-Time Updates**: Enjoy real-time updates as you add or remove participants, ensuring everyone is on the same page.
+- **Client-Side Execution**: Leverage the power of WebAssembly to run the app entirely on the client-side, providing a fast and responsive experience.
 
-If you don't have `cargo-leptos` installed you can install it with
+## Technologies Used
 
-`cargo install cargo-leptos`
+- **Rust**: The core programming language for building the application logic.
+- **Leptos**: A reactive programming library for Rust, facilitating reactive and dynamic user interfaces.
+- **WebAssembly (Wasm)**: Enables the app to run in the browser, providing performance benefits.
 
-Then run
+## Getting Started
 
-`cargo leptos new --git leptos-rs/start`
+To run Whati8 locally, follow these steps:
 
-to generate a new project template (you will be prompted to enter a project name).
+1. Clone the repository:
 
-`cd {projectname}`
+    ```bash
+    git clone https://github.com/your-username/whati8.git
+    ```
 
-to go to your newly created project.
+2. Build the Wasm binary:
 
-Of course, you should explore around the project structure, but the best place to start with your application code is in `src/app.rs`.
+    ```bash
+    cd whati8
+    cargo build --target wasm32-unknown-unknown
+    ```
 
-## Running your project
+3. Serve the app using a static file server. You can use tools like `basic-http-server`:
 
-`cargo leptos watch`  
-By default, you can access your local project at `http://localhost:3000`
+    ```bash
+    basic-http-server ./target/wasm32-unknown-unknown/debug/
+    ```
+
+4. Open your browser and navigate to `http://localhost:4000` to access Whati8.
 
 ## Installing Additional Tools
 
@@ -60,9 +69,22 @@ export LEPTOS_RELOAD_PORT="3001"
 ```
 Finally, run the server binary.
 
-## Notes about CSR and Trunk:
-Although it is not recommended, you can also run your project without server integration using the feature `csr` and `trunk serve`:
 
-`trunk serve --open --features csr`
+## Usage
 
-This may be useful for integrating external tools which require a static site, e.g. `tauri`.
+1. **Input Bill Details**: Enter the bill amount and details.
+2. **Add Participants**: Include participants by providing their names.
+3. **Adjust Amounts**: Easily split the bill or customize amounts for each participant.
+4. **Real-Time Updates**: Watch as the app dynamically updates based on your input.
+
+## Contributions
+
+Contributions are welcome! Feel free to open issues, submit pull requests, or provide feedback to enhance Whati8.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+
+
+
