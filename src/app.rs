@@ -48,7 +48,6 @@ pub struct LItem {
 
 impl LItem {
     fn new(item_name: String, price: Decimal) -> Self {
-
         let item_name = create_rw_signal(item_name);
         let price = create_rw_signal(price);
         let participants = create_rw_signal(Vec::new());
@@ -61,8 +60,19 @@ impl LItem {
         }
     }
 
+    fn update_name(&self, updated_name: String) {
+        self.item_name.update(|item_name| *item_name = updated_name.clone());
+    }
 
 
+    fn clear_participants(&self) {
+        self.participants.update(|p| p.retain(|x| x.id.to_string() == "dummy"));
+    }
+
+
+    fn update_price(&self, updated_price: Decimal) {
+        self.price.update(|up| *up = updated_price);
+    }
 
     fn get_split_by_participants(&self) -> Decimal {
         self.price.get() / Decimal::from(self.participants.get().len())
@@ -87,8 +97,6 @@ impl Participants {
     pub fn new() -> Self {
         Self(Vec::new())
     }
-
-
 
     pub fn add(&mut self, participant: Participant) {
         self.0.push(participant);
@@ -238,7 +246,7 @@ pub fn App() -> impl IntoView {
 fn Homepage() -> impl IntoView {
 
     let (participants, set_participants) = create_signal(Participants::new());
-
+    let mut part_selects: HashMap<String, NodeRef<Select>> = HashMap::new();
     let mark_only_one_payer = move |id: String| {
         participants
         .get()
@@ -294,20 +302,11 @@ fn Homepage() -> impl IntoView {
 
 
 
-    let remove_participant_from_item = move |part_id: String, litem_id: String| {
-        if !part_id.is_empty() && !litem_id.is_empty() {
-            let mut litem = litems.get().0.iter().find(|l| l.id.to_string() == litem_id).unwrap().clone();
-            litem.remove_participant(part_id);
-            if litem.participants.get().len() == 0 {
-                remove_line_item(litem_id);
-            }
-        }
-    };
 
     let litem_name_ref = create_node_ref::<Input>();
     let litem_price_ref = create_node_ref::<Input>();
     let litem_parts_ref = create_node_ref::<Select>();
-    let add_line_item = move || {
+    let mut add_line_item = move || {
 
         let litem_name_input = litem_name_ref.get().unwrap();
         let litem_price_input = litem_price_ref.get().unwrap();
@@ -339,6 +338,8 @@ fn Homepage() -> impl IntoView {
                 new.add_participant(participant.clone());
                 parts_selected.clear();
             }
+            part_selects.entry(new.id.to_string().clone())
+                .or_insert_with(|| create_node_ref::<Select>());
             litem_name_input.set_value("");
             litem_price_input.set_value("");
         }
@@ -396,12 +397,50 @@ fn Homepage() -> impl IntoView {
     };
 
 
+    let edit_item_name = move |value: String, id: String| {
+        let litem = litems.get().0.iter().find(|l| l.id.to_string() == id).unwrap().clone();
+        litem.update_name(value);
+    };
+
+
+    let edit_item_price = move |value: String, id: String| {
+        let litem = litems.get().0.iter().find(|l| l.id.to_string() == id).unwrap().clone();
+        litem.update_price(Decimal::from_str_exact(value.as_str()).unwrap().clone());
+    };
+
+
     let edit_participant_payer = move |id: String| {
         let mut part = participants.get().0.iter().find(|p| p.id.to_string()== id).unwrap().clone();
-        let payer_input = part_payer_ref_yes.get().unwrap();
-        let is_payer = payer_input.checked();
         part.mark_as_payer();
         mark_only_one_payer(id.clone());
+    };
+
+
+    let edit_selected_parts = move |id: String, event: web_sys::Event| {
+    let mut litem = litems.get().0.iter().find(|l| l.id.to_string() == id).unwrap().clone();
+    if let Some(target) = event.target() {
+        if let Some(parts_input) = target.dyn_ref::<web_sys::HtmlSelectElement>() {
+            let mut parts_selected = Vec::new();
+
+            let parts = parts_input.selected_options();
+
+            for i in 0..parts.length() {
+                if let Some(node) = parts.get_with_index(i) {
+                    if let Some(element) = node.dyn_ref::<web_sys::HtmlOptionElement>() {
+                        parts_selected.push(element.value());
+                    }
+                }
+            }
+
+            litem.clear_participants();
+
+            for participant in parts_selected {
+                if let Some(part) = participants.get().0.iter().find(|p| p.id.to_string() == participant) {
+                    litem.add_participant(part.clone());
+                }
+            }
+        }
+    }
     };
 
 
@@ -424,6 +463,43 @@ fn Homepage() -> impl IntoView {
                     <div class="mb-4">
                         <div>Whati8 phase-1</div>
                         <input type="text" id="e-name" placeholder="Enter the event name.." class="mt-2 p-2 border rounded-md w-full" />
+                    </div>
+
+
+                    <div id="calculate-split-section" class=" mt-4">
+
+                                    <label for="participant-dropdown">Item Split</label>
+
+                                    {move || if litems_exists()
+
+                                        {
+                                        view! {
+                                          <div>
+
+                                            <form on:submit=on_submit>
+                                            <label for="total-amount">Total Amount:</label>
+                                            <input type="text"  id="total-amount" placeholder="Total Amount" class="mt-2 p-2 border rounded-md w-full" readonly/>
+                                                     <div class="space-y-2">
+                                                         <For each=all_participants key=|part| part.id let:part>
+                                                         <div class="flex items-center">
+                                                            <label for="participant-amount" class="w-1/2">{part.name} to </label>
+                                                            <input type="text" id=format!("participant-amount_{}", part.id) placeholder="Enter amount" class="w-full mt-2 p-2 border rounded" />
+                                                        </div>
+                                                         </For>
+                                                     </div>
+                                            </form>
+                                          </div>
+                                        }
+                                    }else {
+                                        view! {
+                                          <div class="flex items-center mb-2">
+                                              <h3>No items to split yet!</h3>
+                                          </div>
+
+                                        }
+                                    }
+                                    }
+
                     </div>
                     <div id="add-participant-section" class=" mt-4">
                                 <div class="w-1/2 pr-2">
@@ -491,7 +567,9 @@ fn Homepage() -> impl IntoView {
                     <div id="add-participant-section"  class="mt-4">
                                 <div >
                                     <label for="participant-dropdown">Items</label>
-                                    {move || if litems_exists(){
+                                    {move || if litems_exists()
+
+                                    {
                                         view!{
                                             <>
                                                 <For
@@ -505,20 +583,31 @@ fn Homepage() -> impl IntoView {
 
                                                 <div class="mb-2">
                                                     <label for="item-name">Item Name</label>
-                                                    <input type="text" id="item-name" value=litem.item_name placeholder="Enter item name" class="mr-2 border rounded-md p-2" />
+                                                    <input
+                                                         on:input=move |ev| {
+                                                             edit_item_name(event_target_value(&ev), litem.id.to_string())
+                                                         }
+                                                    type="text" id="item-name" value=litem.item_name placeholder="Enter item name" class="mr-2 border rounded-md p-2" />
                                                 </div>
                                                 <div class="mb-2">
                                                     <label for="item-price">Item Price</label>
-                                                    <input type="number" id="item-price" value=litem.price.get().to_string()
+                                                    <input
+                                                         on:input=move |ev| {
+                                                             edit_item_price(event_target_value(&ev), litem.id.to_string())
+                                                         }
+                                                    type="number" id="item-price" value=litem.price.get().to_string()
                                                     placeholder="Enter item price" class="mr-2 border rounded-md p-2" />
 
                                                 </div>
                                                 </div>
-                                                {move || if participants_exists() {
+                                                {move ||
+                                                    if participants_exists() {
                                                 view! {
                                                     <div>
                                                         <label for="participant-dropdown">Participants</label>
-                                                     <select id="participants-dropdown"  multiple class="mt-2 p-2 border rounded-md w-full">
+                                                     <select id="participants-dropdown"
+                                                     on:change=move |event: web_sys::Event| edit_selected_parts(litem.id.to_string(), event)
+                                                     multiple class="mt-2 p-2 border rounded-md w-full">
                                                           <For each=all_participants key=|part| part.id let:part>
                                                           {move || if check_if_litem_participant(part.id.to_string(), litem.id.to_string()) {
                                                                 view! {
@@ -565,7 +654,7 @@ fn Homepage() -> impl IntoView {
                     </div>
 
 
-                    <div id="add-participant-section" class=" mt-4">
+                    <div id="add-item-section" class=" mt-4">
                                 <form on:submit=on_submit_item>
                                  <label for="item-name" class="mt-2">Item Name</label>
                                  <input type="text" node_ref=litem_name_ref id="item-name" placeholder="Enter item name" class="mt-2 p-2 border rounded-md w-full"/>
@@ -585,6 +674,8 @@ fn Homepage() -> impl IntoView {
                                  </div>
                                  </form>
                     </div>
+
+
 
                 </section>
             </main>
