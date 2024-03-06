@@ -818,7 +818,7 @@ fn Homepage() -> impl IntoView {
                                  <input type="text" node_ref=litem_name_ref id="item-name" placeholder="Enter item name" class="mt-2 p-2 border rounded-md w-full"/>
 
                                  <label for="item-price" class="mt-2">Item Price</label>
-                                 <input type="number" node_ref=litem_price_ref id="item-price" placeholder="Enter item price" class="mt-2 p-2 border rounded-md w-full" step="0.1"/>
+                                 <input type="number" node_ref=litem_price_ref id="item-price" placeholder="Enter item price" class="mt-2 p-2 border rounded-md w-full" step="0.01"/>
 
                                  <label for="participants-dropdown" class="mt-2">Select Participants</label>
 
