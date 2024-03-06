@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::{timestamp::UUID_TICKS_BETWEEN_EPOCHS, Uuid};
 use rust_decimal::{prelude::{FromPrimitive, ToPrimitive}, Decimal};
 use wasm_bindgen::JsCast;
+use web_sys::js_sys::{Date, Intl::DateTimeFormat};
 
 const STORAGE_KEY_LITEM : &str = "litems-key";
 const STORAGE_KEY_PARTICIPANTS : &str = "participants-key";
@@ -258,7 +259,7 @@ impl SplitItem {
             s.insert(part.id, Decimal::add(current_part_split, tax));
         });
 
-        let mut total = Decimal::from(0);
+        let mut total = Decimal::new(0,2);
         for (_id, &amt) in self.final_split.get().iter() {
             total = Decimal::add(total, amt);
         }
@@ -589,7 +590,8 @@ fn Homepage() -> impl IntoView {
                                             <div class="border-dashed border-2 border-pink-500 mt-4 p-4 rounded-md ">
                                                  <label for="total-amount">Total Amount</label>
                                                  <input type="text"  id="total-amount" placeholder="Total Amount"
-                                                value=split_item.get().total_price.get().to_string() class="mt-2 p-2 border rounded-md w-full" readonly/>
+                                                value=split_item.get().total_price.get().to_string()
+                                                class="mt-2 p-2 border rounded-md w-full" readonly/>
                                             </div>
                                                      <div class="space-y-2">
                                                          <For each=all_participants key=|part| part.id let:part>
@@ -635,31 +637,44 @@ fn Homepage() -> impl IntoView {
 
                     </div>
                     <div id="add-participant-section" class=" mt-4">
-                                <div class="w-1/2 pr-2">
+                                <div class="w-full pr-2">
                                     <label for="participant-dropdown">Participants</label>
 
                                     {move || if participants_exists()
 
                                         {
                                         view! {
-                                          <div>
+                                          <div >
                                                 <For
                                                     each=all_participants
                                                     key=|part| part.id
                                                     let:part
                                                 >
-                                                 <div class="flex items-center mb-2">
+                                                 <div class="border-dashed border-2 border-pink-500 mt-4 p-4 rounded-md flex flex-col items-start mb-2">
+                                                    <div class="flex items-center mb-2">
                                                          <input
                                                          on:input=move |ev| {
                                                              edit_participant_name(event_target_value(&ev), part.id.to_string())
                                                          }
                                                              type="text" value=part.name
-                                                                 class="mr-2 border rounded-md p-2" />
-                                                         <label class="mr-2">Payer</label>
-                                                         <input type="checkbox" on:click = move |_| edit_participant_payer(part.id.to_string())
-                                                         name="is-payer" checked= part.is_payer() class="mr-2" />
-                                                         <button on:click=move |_| remove_participant(part.id.to_string())
-                                                         class="bg-red-500 text-white p-2 rounded-md">Remove</button>
+                                                                 class="mb-2 border rounded-md p-2 w-full sm:w-auto" />
+                                                        <label class="mb-2 flex-grow ml-2">Payer</label>
+                                                             <div class="flex items-center">
+                                                                 <input
+                                                                     type="checkbox"
+                                                                     on:click=move |_| edit_participant_payer(part.id.to_string())
+                                                                     name="is-payer"
+                                                                     checked=part.is_payer()
+                                                                     class="mb-2 p-2 ml-2"
+                                                                 />
+                                                                 <button
+                                                                     on:click=move |_| remove_participant(part.id.to_string())
+                                                                     class="bg-red-500 text-white p-2 rounded-md ml-2 sm:ml-2"
+                                                                 >
+                                                                     Remove
+                                                                 </button>
+                                                             </div>
+                                                    </div>
                                                  </div>
                                                  </For>
                                           </div>
@@ -699,7 +714,7 @@ fn Homepage() -> impl IntoView {
 
                     <div id="add-participant-section"  class="mt-4">
                                 <div >
-                                    <label for="participant-dropdown">Items</label>
+                                    <label for="participant-dropdown">{move || litems.get().0.len()} items </label>
                                     {move || if litems_exists()
 
                                     {
@@ -803,7 +818,7 @@ fn Homepage() -> impl IntoView {
                                  <input type="text" node_ref=litem_name_ref id="item-name" placeholder="Enter item name" class="mt-2 p-2 border rounded-md w-full"/>
 
                                  <label for="item-price" class="mt-2">Item Price</label>
-                                 <input type="number" node_ref=litem_price_ref id="item-price" placeholder="Enter item price" class="mt-2 p-2 border rounded-md w-full" step="0.01"/>
+                                 <input type="number" node_ref=litem_price_ref id="item-price" placeholder="Enter item price" class="mt-2 p-2 border rounded-md w-full" step="0.1"/>
 
                                  <label for="participants-dropdown" class="mt-2">Select Participants</label>
 
