@@ -28,6 +28,7 @@ log = "0.4.20"
 gloo-storage = "0.3.0"
 logging = "0.1.0"
 leptos-use = "0.10.3"
+rusty-money = { version = "0.4.1", features = ["iso", "crypto"] }
 
 [dev-dependencies]
 wasm-bindgen = "=0.2.89"

@@ -8,6 +8,7 @@ use uuid::{timestamp::UUID_TICKS_BETWEEN_EPOCHS, Uuid};
 use rust_decimal::{prelude::{FromPrimitive, ToPrimitive}, Decimal};
 use wasm_bindgen::JsCast;
 use web_sys::js_sys::{Date, Intl::DateTimeFormat};
+use rusty_money::{Money, iso, Locale};
 
 const STORAGE_KEY_LITEM : &str = "litems-key";
 const STORAGE_KEY_PARTICIPANTS : &str = "participants-key";
@@ -15,20 +16,14 @@ const STORAGE_KEY_SPLIT_ITEM: &str = "split-item-key";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LItems(pub Vec<LItem>);
-
-
-
 impl LItems {
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
-
     pub fn add(&mut self, litem: LItem) {
         self.0.push(litem);
     }
-
-
     pub fn remove(&mut self, id: String) {
         self.0.retain(|p| p.id.to_string() != id);
     }
@@ -62,14 +57,13 @@ impl LItem {
         self.item_name.update(|item_name| *item_name = updated_name.clone());
     }
 
-
     fn clear_participants(&self) {
         self.participants.update(|p| p.retain(|x| x.id.to_string() == "dummy"));
     }
 
 
     fn update_price(&self, updated_price: Decimal) {
-        self.price.update(|up| *up = updated_price);
+        self.price.update(|up| *up = updated_price.round_dp(2));
     }
 
     fn get_split_by_participants(&self) -> Decimal {
@@ -88,9 +82,6 @@ impl LItem {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participants(pub Vec<Participant>);
 
-
-
-
 impl Participants {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -103,8 +94,6 @@ impl Participants {
     pub fn remove(&mut self, id: String) {
         self.0.retain(|p| p.id.to_string() != id);
     }
-
-
 
 }
 
@@ -205,7 +194,7 @@ impl SplitItem {
     }
 
     fn add_total_tax(&mut self, tax: Decimal) {
-        self.total_tax.update(|p| *p = tax);
+        self.total_tax.update(|p| *p = tax.round_dp(2));
     }
 
 
@@ -237,7 +226,7 @@ impl SplitItem {
 
     fn tax_split(&mut self) -> Decimal {
         if self.total_tax.get().ceil() > Decimal::from(0) && Decimal::from(self.final_split.get().len()) > Decimal::from(0){
-            self.total_tax.get() / Decimal::from(self.final_split.get().len() as u64)
+            self.total_tax.get().round_dp(2) / Decimal::from(self.final_split.get().len() as u64)
         } else {
             Decimal::from(0)
         }
@@ -249,9 +238,9 @@ impl SplitItem {
             Decimal::new(0, 2),
             |mut acc, x| {
                 if x.participants.get().iter().any(|p| p.id == part.id) {
-                    acc += x.get_split_by_participants();
+                    acc += x.get_split_by_participants().round_dp(2);
                 }
-                acc
+                acc.round_dp(2)
             },
         );
         let tax = self.tax_split();
@@ -263,7 +252,7 @@ impl SplitItem {
         for (_id, &amt) in self.final_split.get().iter() {
             total = Decimal::add(total, amt);
         }
-        self.total_price.update(|p| *p = total)
+        self.total_price.update(|p| *p = total.round_dp(2))
         }
     }
 
@@ -302,7 +291,6 @@ pub fn App() -> impl IntoView {
 
 #[component]
 fn Homepage() -> impl IntoView {
-
     let (participants, set_participants) = create_signal(Participants::new());
     let (split_item, set_split_item) = create_signal(SplitItem::new());
     let mark_only_one_payer = move |id: String| {
@@ -329,6 +317,7 @@ fn Homepage() -> impl IntoView {
             }
             set_participants.update(|p| p.add(new.clone()));
             split_item.get().add_participant(new.clone());
+            split_item.get().calculate_split();
             if is_payer {
                mark_only_one_payer(new.id.to_string().clone());
             }
@@ -401,12 +390,11 @@ fn Homepage() -> impl IntoView {
 
 
     let mut add_line_item = move || {
-
         let litem_name_input = litem_name_ref.get().unwrap();
         let litem_price_input = litem_price_ref.get().unwrap();
         let litem_parts_input = litem_parts_ref.get().unwrap();
         let name = String::from(litem_name_input.value().trim());
-        let price = Decimal::from_str_exact(litem_price_input.value().as_str()).unwrap();
+        let price = Decimal::from_str_exact(litem_price_input.value().as_str()).unwrap_or(Decimal::from(0));
         let parts = litem_parts_input.selected_options();
         let mut parts_selected = Vec::new();
         for i in 0..parts.length() {
@@ -434,7 +422,6 @@ fn Homepage() -> impl IntoView {
             }
             split_item.get().add_line_item(new);
             split_item.get().calculate_split();
-
             litem_name_input.set_value("");
             litem_price_input.set_value("");
         }
@@ -603,7 +590,7 @@ fn Homepage() -> impl IntoView {
                                                                         <div id="payer" class="flex items-center">
                                                                         <label for="participant-amount" class="w-1/2">{part.name} "'s share" </label>
                                                                         <input type="text"
-                                                                        value=split_item.get().final_split.get().get(&part.id).unwrap().to_string()
+                                                                        value=split_item.get().final_split.get().get(&part.id).unwrap_or(&Decimal::from(0)).to_string()
 
                                                                         id=format!("participant-amount_{}", part.id) placeholder="Enter amount" class="w-full mt-2 p-2 border rounded" readonly/>
                                                                         </div>
@@ -614,7 +601,7 @@ fn Homepage() -> impl IntoView {
                                                                   <div class="flex items-center">
                                                                      <label for="participant-amount" class="w-1/2">{part.name} "'s share" </label>
                                                                      <input type="text"
-                                                                     value=split_item.get().final_split.get().get(&part.id).unwrap().to_string()
+                                                                     value=split_item.get().final_split.get().get(&part.id).unwrap_or(&Decimal::from(0)).to_string()
                                                                      id=format!("participant-amount_{}", part.id) placeholder="Enter amount" class="w-full mt-2 p-2 border rounded" readonly/>
                                                                  </div>
                                                               }
