@@ -265,17 +265,17 @@ impl SplitItem {
         let tax = self.tax_split();
         if self.is_involved_in_any_orders(part) {
             self.final_split.update(|s| {
-                s.insert(part.id, Decimal::add(current_part_split, tax));
+                s.insert(part.id, Decimal::add(current_part_split, tax.round_dp(2)));
             });
         } else {
             self.final_split.update(|s| {
-                s.insert(part.id, Decimal::from(0));
+                s.insert(part.id, Decimal::from(0).round_dp(2));
             });
         }
 
-        let mut total = Decimal::new(0,2);
+        let mut total = Decimal::new(0,0);
         for (_id, &amt) in self.final_split.get().iter() {
-            total = Decimal::add(total, amt);
+            total = Decimal::add(total, amt.round_dp(2));
         }
         self.total_price.update(|p| *p = total.round_dp(2))
         }
