@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::{Add, AddAssign}, str::FromStr, string};
+use std::{collections::HashMap, ops::{Add, AddAssign}, str::FromStr, string, thread::current};
 use leptos::{ev::SubmitEvent, html::{Input, Select}, *};
 use leptos_meta::*;
 use leptos_router::*;
@@ -222,14 +222,33 @@ impl SplitItem {
         self.participants.update(|p| p.retain(|p| p.id.to_string() != id));
     }
 
+    fn total_involved_participant_count(&mut self) -> Decimal {
+        let mut count = Decimal::new(0, 0); // Change 2 to 0 for integer part
+        for part in &self.participants.get() {
+            if self.is_involved_in_any_orders(part) {
+                count += Decimal::new(1, 0); // Increment count by 1
+            }
+        }
+
+        count
+    }
 
 
     fn tax_split(&mut self) -> Decimal {
-        if self.total_tax.get().ceil() > Decimal::from(0) && Decimal::from(self.final_split.get().len()) > Decimal::from(0){
-            self.total_tax.get().round_dp(2) / Decimal::from(self.final_split.get().len() as u64)
+        if self.total_tax.get().ceil() > Decimal::from(0) && Decimal::from(self.final_split.get().len()) > Decimal::from(0) && self.total_involved_participant_count() > Decimal::from(0) {
+            self.total_tax.get().round_dp(2) / self.total_involved_participant_count()
         } else {
             Decimal::from(0)
         }
+    }
+
+    fn is_involved_in_any_orders(&mut self, part: &Participant) -> bool {
+       for litem in self.line_items.get().iter() {
+        if litem.participants.get().contains(part) {
+            return true;
+        }
+       } 
+       return false;
     }
 
     fn calculate_split(&mut self) {
@@ -244,9 +263,15 @@ impl SplitItem {
             },
         );
         let tax = self.tax_split();
-        self.final_split.update(|s| {
-            s.insert(part.id, Decimal::add(current_part_split, tax));
-        });
+        if self.is_involved_in_any_orders(part) {
+            self.final_split.update(|s| {
+                s.insert(part.id, Decimal::add(current_part_split, tax));
+            });
+        } else {
+            self.final_split.update(|s| {
+                s.insert(part.id, Decimal::from(0));
+            });
+        }
 
         let mut total = Decimal::new(0,2);
         for (_id, &amt) in self.final_split.get().iter() {
