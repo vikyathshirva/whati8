@@ -2,17 +2,18 @@ use std::{collections::HashMap, ops::{Add, AddAssign}, str::FromStr, string, thr
 use leptos::{ev::SubmitEvent, html::{Input, Select}, *};
 use leptos_meta::*;
 use leptos_router::*;
-use log::{info, debug};
+use log::{info, debug, LevelFilter};
 use serde::{Deserialize, Serialize};
 use uuid::{timestamp::UUID_TICKS_BETWEEN_EPOCHS, Uuid};
 use rust_decimal::{prelude::{FromPrimitive, ToPrimitive}, Decimal};
 use wasm_bindgen::JsCast;
-use web_sys::js_sys::{Date, Intl::DateTimeFormat};
+use web_sys::{js_sys::{Date, Intl::DateTimeFormat}, Blob};
 use rusty_money::{Money, iso, Locale};
 
 const STORAGE_KEY_LITEM : &str = "litems-key";
 const STORAGE_KEY_PARTICIPANTS : &str = "participants-key";
 const STORAGE_KEY_SPLIT_ITEM: &str = "split-item-key";
+
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LItems(pub Vec<LItem>);
@@ -164,7 +165,8 @@ pub struct SplitItem {
     participants: RwSignal<Vec<Participant>>,
     line_items: RwSignal<Vec<LItem>>,
     final_split: RwSignal<HashMap<Uuid, Decimal>>,
-    settle_status: RwSignal<bool>
+    settle_status: RwSignal<bool>,
+    summary_text: RwSignal<String>
 }
 
 
@@ -177,6 +179,7 @@ impl SplitItem {
         let line_items = create_rw_signal(Vec::new());
         let final_split = create_rw_signal(HashMap::new());
         let settle_status = create_rw_signal(false);
+        let summary_text = create_rw_signal(String::new());
         SplitItem {
            id: Uuid::new_v4(),
            event_name,
@@ -185,7 +188,8 @@ impl SplitItem {
            participants,
            line_items,
            final_split,
-           settle_status
+           settle_status,
+           summary_text
         }
     }
 
@@ -251,6 +255,42 @@ impl SplitItem {
        return false;
     }
 
+    pub fn update_summary_text(&self) {
+        let event_name = self.event_name.get().clone();
+        let total_price = self.total_price.get();
+        let total_tax = self.total_tax.get();
+        let participants = self.participants.get();
+        let line_items = self.line_items.get();
+        let final_split = self.final_split.get();
+
+        let mut summary_text = String::new();
+        summary_text.push_str(&format!("-----BILL SPLIT SUMMARY (COPY THIS)---- \n"));
+        summary_text.push_str(&format!("Event Name: {}\n", event_name));
+        summary_text.push_str(&format!("Total Price: ₹{}\n", total_price));
+        summary_text.push_str(&format!("Total Tax: ₹{}\n\n", total_tax));
+
+        summary_text.push_str("Participants:\n");
+        for participant in participants {
+            summary_text.push_str(&format!("- Name: {} ", &participant.name.get()));
+            if participant.payer.get() {
+                summary_text.push_str(" [PAYER] \n");
+            }else {
+                 summary_text.push_str("\n");
+            }
+            summary_text.push_str("  Items:\n");
+            for item in line_items.iter() {
+                if item.participants.get().clone().iter().any(|p| p.id == participant.id) {
+                    summary_text.push_str(&format!("    - {}: ₹{}\n", &item.item_name.get(), &item.price.get()));
+                }
+            }
+            summary_text.push_str(&format!("  Total Amount Owed: ₹{}\n\n", final_split.get(&participant.id).unwrap_or(&Decimal::ZERO)));
+        }
+
+        self.summary_text.set(summary_text);
+    }
+
+
+
     fn calculate_split(&mut self) {
         for part in self.participants.get().iter() {
         let current_part_split = self.line_items.get().iter().fold(
@@ -277,8 +317,9 @@ impl SplitItem {
         for (_id, &amt) in self.final_split.get().iter() {
             total = Decimal::add(total, amt.round_dp(2));
         }
-        self.total_price.update(|p| *p = total.round_dp(2))
-        }
+        self.total_price.update(|p| *p = total.round_dp(2));
+        self.update_summary_text()
+        } 
     }
 
     fn get_split_amount_by_id(&self, id: Uuid) -> Option<Decimal> {
@@ -296,6 +337,13 @@ pub fn App() -> impl IntoView {
     view! {
         // injects a stylesheet into the document <head>
         // id=leptos means cargo-leptos will hot-reload this stylesheet
+        <Link rel="shortcut icon" type_="image/ico" href="./assets/favicon.ico"/>
+        <link rel="icon" type="image/png" sizes="192x192" href="./assets/android-chrome-192x192.png"/>
+        <link rel="icon" type="image/png" sizes="512x512" href="./assets/android-chrome-512x512.png"/>
+        <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png"/>
+        <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png"/>
+        <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png"/>
+
         <Stylesheet id="leptos" href="/pkg/leptos_start.css"/>
         // sets the document title
         <Title text="Whati8"/>
@@ -351,6 +399,13 @@ fn Homepage() -> impl IntoView {
     };
 
 
+
+
+
+
+    
+
+
     let (litems, set_litems) = create_signal(LItems::new());
     let remove_participant = move |id: String| {
     if !id.is_empty() {
@@ -376,7 +431,7 @@ fn Homepage() -> impl IntoView {
     };
 
 
-
+    
 
 
 
@@ -510,12 +565,14 @@ fn Homepage() -> impl IntoView {
     let edit_participant_name = move |value: String, id: String| {
         let mut part = participants.get().0.iter().find(|p| p.id.to_string()== id).unwrap().clone();
         part.update_name(value);
+        split_item.get().calculate_split();
     };
 
 
     let edit_item_name = move |value: String, id: String| {
         let litem = litems.get().0.iter().find(|l| l.id.to_string() == id).unwrap().clone();
         litem.update_name(value);
+        split_item.get().calculate_split();
     };
 
 
@@ -530,6 +587,7 @@ fn Homepage() -> impl IntoView {
         let mut part = participants.get().0.iter().find(|p| p.id.to_string()== id).unwrap().clone();
         part.mark_as_payer();
         mark_only_one_payer(id.clone());
+        split_item.get().calculate_split();
     };
 
 
@@ -580,25 +638,22 @@ fn Homepage() -> impl IntoView {
             <main class="container mx-auto p-4">
                 <section class="bg-white p-8 rounded-lg shadow-md max-w-md mx-auto mt-8">
                     <div class="mb-4">
-                        <div>Whati8</div>
+                        <img src="./assets/headline.png"/>
+                       <div style="text-align: center; padding-top: 20px; padding-bottom: 20px;">
+                            A simple bill 
+                            <span style="color: pink; font-style: italic;">splitting app</span>
+                        </div>
                         <input type="text" id="e-name"
                         on:input=move |ev| update_split_event_name(event_target_value(&ev))
                         placeholder="Enter the event name.." class="mt-2 p-2 border rounded-md w-full" />
                     </div>
-
-
                     <div id="calculate-split-section" class=" mt-4">
-
                                     <label for="participant-dropdown">Item Split</label>
-
                                     {move || if litems_exists()
-
                                         {
                                         view! {
                                           <div>
-
                                             <form on:submit=on_submit>
-
                                             <div class="border-dashed border-2 border-pink-500 mt-4 p-4 rounded-md ">
                                                  <label for="total-amount">Total Amount</label>
                                                  <input type="text"  id="total-amount" placeholder="Total Amount"
@@ -634,7 +689,10 @@ fn Homepage() -> impl IntoView {
                                                          }
                                                          </For>
                                                      </div>
-                                            </form>
+                                            </form> 
+                                              <div class="space-y-2">
+                                               <textarea id="summary" class="w-full h-full mt-4 p-2 border rounded" rows="20" readonly>{split_item.get().summary_text.get().clone()}</textarea>
+                                                </div>
                                           </div>
                                         }
                                     }else {

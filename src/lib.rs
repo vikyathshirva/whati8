@@ -1,4 +1,5 @@
 pub mod app;
+use log::LevelFilter;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
