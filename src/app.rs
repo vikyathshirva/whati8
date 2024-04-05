@@ -640,9 +640,11 @@ fn Homepage() -> impl IntoView {
                     <div class="mb-4">
                         <img src="./assets/headline.png"/>
                        <div style="text-align: center; padding-top: 20px; padding-bottom: 20px;">
-                            A simple bill 
-                            <span style="color: pink; font-style: italic;">splitting app</span>
+                            A simple, no-nonsense
+                            <span style="color: pink; font-style: italic;">bill splitting </span>
+                            app
                         </div>
+                        <label for="e-name">Event name</label>
                         <input type="text" id="e-name"
                         on:input=move |ev| update_split_event_name(event_target_value(&ev))
                         placeholder="Enter the event name.." class="mt-2 p-2 border rounded-md w-full" />
