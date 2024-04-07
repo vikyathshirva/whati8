@@ -457,7 +457,7 @@ fn Homepage() -> impl IntoView {
     let update_split_event_name = move |name: String| {
         let mut split_i = split_item.get();
         split_i.add_event_name(name);
-
+        split_item.get().calculate_split();
     };
 
 
