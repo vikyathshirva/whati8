@@ -13,4 +13,3 @@ target
 **/end2end/playwright-report
 **/playwright/.cache
 **/.vercel
-fly.toml
